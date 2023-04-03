@@ -1,0 +1,473 @@
+library(tidyverse)
+library(scales)
+library(maptools)
+library(spatstat.geom)
+library(sf)
+library(dplyr)
+library(ggplot2)
+library(ggpubr)
+library(gridExtra)
+library(pals)
+library(RColorBrewer)
+setwd("~/Desktop/progetto cinema")
+
+#data
+tmdb = read.csv("tmdb_5000_movies.csv")
+confini = st_read("world-administrative-boundaries.shp")
+
+#sistemo il databasse tmdb
+
+#ricavo generi e paesi di produzione
+tmdb$generi = str_sub(tmdb$genres,9,10)
+tmdb$paesi = str_sub(tmdb$production_countries,18,19)
+
+#devo escludere dalla tabella i film con valori NA o "0" nelle categorie interessate
+tmdb = tmdb[!(tmdb$generi == "" | is.na(tmdb$generi)), ]
+tmdb = tmdb[!(tmdb$paesi == "" | is.na(tmdb$paesi)), ]
+tmdb = tmdb[!(tmdb$budget == "0" | is.na(tmdb$budget)), ]
+tmdb = tmdb[!(tmdb$vote_average == "" | is.na(tmdb$vote_average) 
+              | tmdb$vote_average == "0.0" | tmdb$vote_average == "0"), ]
+tmdb = tmdb[!(tmdb$revenue == "0" | is.na(tmdb$revenue)), ]
+
+#unisco i database
+newtm= merge(tmdb, confini, by.x= "paesi", by.y= "iso_3166_1_")
+
+#seleziono solo le colonne che mi interesssano
+df= newtm %>%
+  select(paesi,id,original_title,budget,revenue,vote_average,generi,continent,geometry,runtime)
+
+#creiamo database per ogni continente
+europa = df %>%
+  filter(continent %in% c("Europe"))
+america = df %>%
+  filter(continent %in% c("Americas"))
+asia = df %>%
+  filter(continent %in% c("Asia"))
+oceania = df %>%
+  filter(continent %in% c("Oceania"))
+africa = df %>%
+  filter(continent %in% c("Africa"))
+
+#trasformo budget, rating e revenue in numeri
+df$budget = as.numeric(df$budget)
+
+#elimino valori anomali di costo per ogni continente
+budget_eu = europa$budget 
+outliers1 = boxplot.stats(budget_eu)$out
+europa[europa$budget %in% outliers1, "budget"] = NA
+europa = europa[!(europa$budget == "0" | is.na(europa$budget)), ]
+
+budget_am = america$budget 
+outliers2 = boxplot.stats(budget_am)$out
+america[america$budget %in% outliers2, "budget"] = NA
+america = america[!(america$budget == "0" | is.na(america$budget)), ]
+
+budget_af = africa$budget 
+outliers3 = boxplot.stats(budget_af)$out
+africa[africa$budget %in% outliers3, "budget"] = NA
+africa = africa[!(africa$budget == "0" | is.na(africa$budget)), ]
+
+budget_oc = oceania$budget 
+outliers4 = boxplot.stats(budget_oc)$out
+oceania[oceania$budget %in% outliers4, "budget"] = NA
+oceania = oceania[!(oceania$budget == "0" | is.na(oceania$budget)), ]
+
+budget_as = asia$budget 
+outliers5 = boxplot.stats(budget_as)$out
+asia[asia$budget %in% outliers5, "budget"] = NA
+asia = asia[!(asia$budget == "0" | is.na(asia$budget)), ]
+
+#elimino valori anomali di durata per ogni continente
+run_eu = europa$runtime 
+outliers6 = boxplot.stats(run_eu)$out
+europa[europa$runtime %in% outliers6, "runtime"] = NA
+europa = europa[!(europa$runtime == "0" | is.na(europa$runtime)), ]
+
+run_am = america$runtime 
+outliers7 = boxplot.stats(run_am)$out
+america[america$runtime %in% outliers7, "runtime"] = NA
+america = america[!(america$runtime == "0" | is.na(america$runtime)), ]
+
+run_af = africa$runtime 
+outliers8 = boxplot.stats(run_af)$out
+africa[africa$runtime %in% outliers8, "runtime"] = NA
+africa = africa[!(africa$runtime == "0" | is.na(africa$runtime)), ]
+
+run_oc = oceania$runtime 
+outliers9 = boxplot.stats(run_oc)$out
+oceania[oceania$runtime %in% outliers9, "runtime"] = NA
+oceania = oceania[!(oceania$runtime == "0" | is.na(oceania$runtime)), ]
+
+run_as = asia$runtime 
+outliers10 = boxplot.stats(run_as)$out
+asia[asia$runtime %in% outliers10, "runtime"] = NA
+asia = asia[!(asia$runtime == "0" | is.na(asia$runtime)), ]
+
+#calcolo il profitto in percentuale ed elimino i valori anomali
+profit = ((europa$revenue - europa$budget)/(europa$budget))*100
+europa$profit = profit
+profit = ((america$revenue - america$budget)/(america$budget))*100
+america$profit = profit
+profit = ((africa$revenue - africa$budget)/(africa$budget))*100
+africa$profit = profit
+profit = ((oceania$revenue - oceania$budget)/(oceania$budget))*100
+oceania$profit = profit
+profit = ((asia$revenue - asia$budget)/(asia$budget))*100
+asia$profit = profit
+
+profit_eu = europa$profit 
+outliers11 = boxplot.stats(profit_eu)$out
+europa[europa$profit %in% outliers11, "profit"] = NA
+europa = europa[!(europa$profit == "0" | is.na(europa$profit)), ]
+
+profit_am = america$profit 
+outliers12 = boxplot.stats(profit_am)$out
+america[america$profit %in% outliers12, "profit"] = NA
+america = america[!(america$profit == "0" | is.na(america$profit)), ]
+
+profit_af = africa$profit 
+outliers13 = boxplot.stats(profit_af)$out
+africa[africa$profit %in% outliers13, "profit"] = NA
+africa = africa[!(africa$profit == "0" | is.na(africa$profit)), ]
+
+profit_oc = oceania$profit 
+outliers14 = boxplot.stats(profit_oc)$out
+oceania[oceania$profit %in% outliers14, "profit"] = NA
+oceania = oceania[!(oceania$profit == "0" | is.na(oceania$profit)), ]
+
+profit_as = asia$profit 
+outliers15 = boxplot.stats(profit_as)$out
+asia[asia$profit %in% outliers15, "profit"] = NA
+asia = asia[!(asia$profit == "0" | is.na(asia$profit)), ]
+
+#formiamo il nuovo database senza outilner
+dataf = rbind(africa, america, asia, europa, oceania)
+
+#Output
+#4 gis per i valori medi di ogni continente per ogni variabil
+#vote_average
+media_vot= dataf %>%
+  select(continent, vote_average) %>%
+  group_by(continent) %>%
+  summarise_at(vars(vote_average),mean)
+gisvot= merge(confini, media_vot, by= "continent")
+col_vot = brewer.pal(5, "RdYlGn")
+plot(gisvot["vote_average"],nbreaks= 5, pal=(col_vot),main="")
+title(main = list("Voto medio dei film diviso per continente",
+                  cex= 1.5, font= 2))
+#budget
+media_bud= dataf %>%
+  select(continent, budget) %>%
+  group_by(continent) %>%
+  summarise_at(vars(budget),mean)
+gisbud= merge(confini, media_bud, by= "continent")
+Arancioni = brewer.pal(5, "Oranges")
+plot(gisbud["budget"],nbreaks= 5, pal=(Arancioni),main="")
+title(main = list("Costo medio dei film diviso per continente",
+                  cex= 1.5, font= 2))
+#profit
+media_pro= dataf %>% 
+  select(continent, profit) %>%
+  group_by(continent) %>%
+  summarise_at(vars(profit),mean)
+gispro= merge(confini, media_pro, by= "continent")
+Verdi = brewer.pal(5, "YlGn")
+plot(gispro["profit"],nbreaks= 5, pal=(Verdi),main="")
+title(main = list("Profitto medio dei film diviso per continente",
+                  cex= 1.5, font= 2))
+title(sub= list("profitto calcolato come variazione percentuale tra costo e incasso",
+                font= 1), line = -21.5)
+#runtime
+media_run= dataf %>%
+  select(continent, runtime) %>%
+  group_by(continent) %>%
+  summarise_at(vars(runtime),mean)
+gisrun= merge(confini, media_run, by= "continent")
+plot(gisrun["runtime"],nbreaks= 5, pal=(brewer.blues),main="")
+title(main = list("Durata media dei film divisa per continente",
+                  cex= 1.5, font= 2))
+
+#regressione mondo intero
+p1 <- ggplot(filter(dataf, continent %in% c("Asia","Europe","Oceania","Americas","Africa")),
+             aes(x=budget,
+                 y=vote_average,
+                 color=continent))
+corbud =p1 + geom_point(size=0.01) + geom_smooth(method='lm',se= F) +
+  facet_wrap(~continent, ncol = 5)+
+  labs(title="Correlazione tra costo e voto del film")+ 
+  labs(y = "Voto", x = "Costo")+
+  scale_x_continuous(breaks = scales::pretty_breaks(n = 4))+
+  stat_cor(aes(label=after_stat(r.label)), label.x = 80000000,label.y = 4.5, size= 6)
+
+p2 <- ggplot(filter(dataf, continent %in% c("Asia","Europe","Oceania","Americas","Africa")),
+             aes(x=profit,
+                 y=vote_average,
+                 color=continent))
+corpro = p2 + geom_point(size=0.01) + geom_smooth(method='lm',se= F) +
+  facet_wrap(~continent, ncol = 5)+
+  labs(title="Correlazione tra profitto e voto del film") + 
+  labs(y = "Voto", x = "Profitto")+
+  stat_cor(aes(label=after_stat(r.label)), label.x = 350,label.y = 4.5, size= 6)
+
+p3 <- ggplot(filter(dataf, continent %in% c("Asia","Europe","Oceania","Americas","Africa")),
+             aes(x=runtime,
+                 y=vote_average,
+                 color=continent))
+corrun = p3 + geom_point(size=0.01) + geom_smooth(method='lm',se= F) +
+  facet_wrap(~continent, ncol = 5)+
+  labs(title="Correlazione tra durata e voto del film")+ 
+  labs(y = "Voto", x = "Durata")+
+  stat_cor(aes(label=after_stat(r.label)), label.x = 110,label.y = 4.5, size= 6)
+
+ggarrange (corbud, corpro, corrun, ncol = 1, nrow = 3)
+
+#sommario sulle correlazioni del mondo
+#america
+r1_am= cor(america$vote_average, america$budget, method = c("pearson"))
+r2_am= cor(america$vote_average, america$profit, method = c("pearson"))
+r3_am= cor(america$vote_average, america$runtime, method = c("pearson"))
+#africa
+r1_af= cor(africa$vote_average, africa$budget, method = c("pearson"))
+r2_af= cor(africa$vote_average, africa$profit, method = c("pearson"))
+r3_af= cor(africa$vote_average, africa$runtime, method = c("pearson"))
+#asia
+r1_as= cor(asia$vote_average, asia$budget, method = c("pearson"))
+r2_as= cor(asia$vote_average, asia$profit, method = c("pearson"))
+r3_as= cor(asia$vote_average, asia$runtime, method = c("pearson"))
+#europa
+r1_eu= cor(europa$vote_average, europa$budget, method = c("pearson"))
+r2_eu= cor(europa$vote_average, europa$profit, method = c("pearson"))
+r3_eu= cor(europa$vote_average, europa$runtime, method = c("pearson"))
+#oceania
+r1_oc= cor(oceania$vote_average, oceania$budget, method = c("pearson"))
+r2_oc= cor(oceania$vote_average, oceania$profit, method = c("pearson"))
+r3_oc= cor(oceania$vote_average, oceania$runtime, method = c("pearson"))
+
+continenti_nomi = c("Africa","America","Asia","Europa","Oceania")
+Correlazione_voto_budget = c(r1_af,r1_am,r1_as,r1_eu,r1_oc)
+Correlazione_voto_profit = c(r2_af,r2_am,r2_as,r2_eu,r2_oc)
+Correlazione_voto_runtime = c(r3_af,r3_am,r3_as,r3_eu,r3_oc)
+sommario1 = data.frame (continenti_nomi,Correlazione_voto_budget,
+                        Correlazione_voto_profit,Correlazione_voto_runtime)
+
+s<-ggplot(data=sommario1, aes(x=continenti_nomi, y=Correlazione_voto_budget,
+                              fill= factor(Correlazione_voto_budget))) +
+  geom_bar(stat="identity")+
+  labs(title="Correlazione tra costo e voto del film",
+       x ="Continenti", y = "Indice di Correlazione")+
+  scale_fill_brewer("Indice di Correlazione",
+                    palette="Oranges")
+s1 = s + coord_flip()+ ylim(-1, 1)
+
+s2<-ggplot(data=sommario1, aes(x=continenti_nomi, y=Correlazione_voto_profit,
+                               fill= factor(Correlazione_voto_profit))) +
+  geom_bar(stat="identity")+
+  labs(title="Correlazione tra profitto e voto del film",
+       x ="Continenti", y = "Indice di Correlazione")+
+  scale_fill_brewer("Indice di Correlazione",
+                    palette="Greens")
+s3 = s2 + coord_flip() + ylim(-1, 1)
+
+s4<-ggplot(data=sommario1, aes(x=continenti_nomi, y=Correlazione_voto_runtime,
+                               fill= factor(Correlazione_voto_runtime))) +
+  geom_bar(stat="identity")+
+  labs(title="Correlazione tra costo e durata del film",
+       x ="Continenti", y = "Indice di Correlazione")+
+  scale_fill_brewer("Indice di Correlazione",
+                    palette="Blues")
+s5 = s4 + coord_flip()+ ylim(-1, 1)
+
+ggarrange (s1, s3, s5, ncol = 1, nrow = 3)
+
+#focus sull'europa
+
+#grafico a barre per far risultare i generi maggiori
+europa %>% 
+  group_by(generi) %>% 
+  count() %>% 
+  ggplot(aes(x = reorder(generi, -n),
+             y = n, 
+             fill = generi)) + 
+  geom_col() +
+  labs(title="Generi più comuni in Europa",
+       x ="Generi", y = "Numero di film")
+
+#gis per vedere come varia il voto del film per i vari generi
+
+#sostituiamo i codici dei generi con i nomi dei generi
+europa$generi = str_replace_all(europa$generi, 
+                                c("18"="Drama","12"="Adventure","28"="Action","35"="Comedy","53"="Thriller"))
+
+#generale
+media_vot_eu= europa %>%
+  select(paesi, vote_average) %>%
+  group_by(paesi)%>%
+  summarise_at(vars(vote_average),mean)
+conf_eu = confini %>%
+  filter(continent %in% c("Europe"))
+gisvot_eu= left_join(conf_eu, media_vot_eu, by= c("iso_3166_1_"="paesi"))
+g0= ggplot(gisvot_eu,aes(fill=vote_average)) + geom_sf() +
+  scale_fill_continuous(type ="viridis",na.value="white")+
+  coord_sf(xlim = c(-30,50))+
+  labs(title="Generale")
+#drama
+media_vot_eu= europa %>%
+  filter(generi %in% c("Drama"))%>%
+  select(paesi, vote_average) %>%
+  group_by(paesi)%>%
+  summarise_at(vars(vote_average),mean)
+g1= ggplot(gisvot_eu,aes(fill=vote_average)) + geom_sf() +
+  scale_fill_continuous(type ="viridis",na.value="white")+
+  coord_sf(xlim = c(-30,50))+
+  labs(title="Drama")
+#adventure
+media_vot_eu= europa %>%
+  filter(generi %in% c("Adventure"))%>%
+  select(paesi, vote_average) %>%
+  group_by(paesi)%>%
+  summarise_at(vars(vote_average),mean)
+g2=ggplot(gisvot_eu,aes(fill=vote_average)) + geom_sf() +
+  scale_fill_continuous(type ="viridis",na.value="white")+
+  coord_sf(xlim = c(-30,50))+
+  labs(title="Adventure")
+#action
+media_vot_eu= europa %>%
+  filter(generi %in% c("Action"))%>%
+  select(paesi, vote_average) %>%
+  group_by(paesi)%>%
+  summarise_at(vars(vote_average),mean)
+g3= ggplot(gisvot_eu,aes(fill=vote_average)) + geom_sf() +
+  scale_fill_continuous(type ="viridis",na.value="white")+
+  coord_sf(xlim = c(-30,50))+
+  labs(title="Action")
+#comedy
+media_vot_eu= europa %>%
+  filter(generi %in% c("Comedy"))%>%
+  select(paesi, vote_average) %>%
+  group_by(paesi)%>%
+  summarise_at(vars(vote_average),mean)
+g4 = ggplot(gisvot_eu,aes(fill=vote_average)) + geom_sf() +
+  scale_fill_continuous(type ="viridis",na.value="white")+
+  coord_sf(xlim = c(-30,50))+
+  labs(title="Comedy")
+#thriller
+media_vot_eu= europa %>%
+  filter(generi %in% c("Thriller"))%>%
+  select(paesi, vote_average) %>%
+  group_by(paesi)%>%
+  summarise_at(vars(vote_average),mean)
+g5 = ggplot(gisvot_eu,aes(fill=vote_average)) + geom_sf() +
+  scale_fill_continuous(type ="viridis",na.value="white")+
+  coord_sf(xlim = c(-30,50))+
+  labs(title="Thriller")
+
+ggarrange (g0, g1, g2, g3, g4, g5, ncol = 2, nrow = 3)
+
+#output europa
+p4 <- ggplot(filter(europa, generi %in% 
+                      c("Drama","Adventure","Action","Comedy","Thriller")),
+             aes(x=budget, y=vote_average, color=generi))+
+  scale_x_continuous(breaks = scales::pretty_breaks(n = 4))
+corbudeur = p4 + geom_point(size=0.03) + geom_smooth(method='lm',se= F) +
+  facet_wrap(~generi, ncol = 5)+ 
+  labs(title="Correlazione tra costo e voto del film")+
+  labs(y = "Voto", x = "Costo")+
+  stat_cor(aes(label=after_stat(r.label)), label.x = 50000000,label.y = 5.5, size= 4)
+
+p5 <- ggplot(filter(europa, generi %in% 
+                      c("Drama","Adventure","Action","Comedy","Thriller")),
+             aes(x=profit, y=vote_average, color=generi))
+corproeur = p5 + geom_point(size=0.03) + geom_smooth(method='lm',se= F) +
+  facet_wrap(~generi, ncol = 5)+
+  labs(title="Correlazione tra profitto e voto del film")+
+  labs(y = "Voto", x = "Profitto")+
+  stat_cor(aes(label=after_stat(r.label)), label.x = 400,label.y = 5.5, size= 4)
+
+p6 <- ggplot(filter(europa, generi %in% 
+                      c("Drama","Adventure","Action","Comedy","Thriller")),
+             aes(x=runtime, y=vote_average, color=generi))
+corruneur = p6 + geom_point(size=0.03) + geom_smooth(method='lm',se= F) +
+  facet_wrap(~generi, ncol = 5)+
+  labs(title="Correlazione tra durata e voto del film")+
+  labs(y = "Voto", x = "Durata")+
+  stat_cor(aes(label=after_stat(r.label)), label.x = 120, label.y = 5.5, size= 4)
+
+ggarrange (corbudeur, corproeur, corruneur, ncol = 1, nrow = 3)
+
+#sommario su correlazioni europa
+#correlazione europa
+act= europa %>%
+  filter(generi %in% c("Action"))%>%
+  select(paesi, vote_average, budget, profit, runtime) %>%
+  group_by(paesi)
+adv= europa %>%
+  filter(generi %in% c("Adventure"))%>%
+  select(paesi, vote_average, budget, profit, runtime) %>%
+  group_by(paesi)
+com= europa %>%
+  filter(generi %in% c("Comedy"))%>%
+  select(paesi, vote_average, budget, profit, runtime) %>%
+  group_by(paesi)
+dra= europa %>%
+  filter(generi %in% c("Drama"))%>%
+  select(paesi, vote_average, budget, profit, runtime) %>%
+  group_by(paesi)
+thr= europa %>%
+  filter(generi %in% c("Thriller"))%>%
+  select(paesi, vote_average, budget, profit, runtime) %>%
+  group_by(paesi)
+#action
+r_ac= cor(act$vote_average, act$budget, method = c("pearson"))
+r_ac1= cor(act$vote_average, act$profit, method = c("pearson"))
+r_ac2= cor(act$vote_average, act$runtime, method = c("pearson"))
+#adventure
+r_ad= cor(adv$vote_average, adv$budget, method = c("pearson"))
+r_ad1= cor(adv$vote_average, adv$profit, method = c("pearson"))
+r_ad2= cor(adv$vote_average, adv$runtime, method = c("pearson"))
+#comedy
+r_co= cor(com$vote_average, com$budget, method = c("pearson"))
+r_co1= cor(com$vote_average, com$profit, method = c("pearson"))
+r_co2= cor(com$vote_average, com$runtime, method = c("pearson"))
+#drama
+r_dr= cor(dra$vote_average, dra$budget, method = c("pearson"))
+r_dr1= cor(dra$vote_average, dra$profit, method = c("pearson"))
+r_dr2= cor(dra$vote_average, dra$runtime, method = c("pearson"))
+#thriller
+r_th= cor(thr$vote_average, thr$budget, method = c("pearson"))
+r_th1= cor(thr$vote_average, thr$profit, method = c("pearson"))
+r_th2= cor(thr$vote_average, thr$runtime, method = c("pearson"))
+
+cor_bud_eu = c(r_ac,r_ad,r_co,r_dr,r_th)
+cor_pro_eu = c(r_ac1,r_ad1,r_co1,r_dr1,r_th2)
+cor_run_eu = c(r_ac2,r_ad2,r_co2,r_dr2,r_th2)
+generi_com= c("Action","Adventure","Comedy","Drama","Thriller")
+sommario_generi= data.frame(generi_com, cor_bud_eu,cor_pro_eu,cor_run_eu)
+
+j<-ggplot(data=sommario_generi, aes(x=generi_com, y=cor_bud_eu,
+                                    fill= factor(cor_bud_eu))) +
+  geom_bar(stat="identity")+
+  labs(title="Correlazione tra costo e voto del film",
+       x ="Generi", y = "Indice di correlazione")+
+  scale_fill_brewer("Indice di Correlazione",
+                    palette="Oranges")
+j1 = j + coord_flip()+ ylim(-1, 1)
+
+j2<-ggplot(data=sommario_generi, aes(x=generi_com, y=cor_pro_eu,
+                                     fill= factor(cor_run_eu))) +
+  geom_bar(stat="identity")+
+  labs(title="Correlazione tra profitto e voto del film",
+       x ="Generi", y = "Indice di correlazione")+
+  scale_fill_brewer("Indice di Correlazione",
+                    palette="Greens")
+j3 = j2 + coord_flip() + ylim(-1, 1)
+
+j4<-ggplot(data=sommario_generi, aes(x=generi_com, y=cor_run_eu,
+                                     fill= factor(cor_run_eu))) +
+  geom_bar(stat="identity")+
+  labs(title="Correlazione tra durata e voto del film",
+       x ="Generi", y = "Indice di correlazione")+
+  scale_fill_brewer("Indice di Correlazione",
+                    palette="Blues")
+j5 = j4 + coord_flip()+ ylim(-1, 1)
+
+ggarrange (j1, j3, j5, ncol = 1, nrow = 3)
