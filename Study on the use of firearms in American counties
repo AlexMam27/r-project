@@ -1,0 +1,158 @@
+#iniziatiling
+
+library(tidyverse)
+library(scales)
+library(maptools)
+library(spatstat.geom)
+library(sf)
+library(dplyr)
+library(ggplot2)
+library(ggpubr)
+library(gridExtra)
+library(pals)
+library(RColorBrewer)
+library(reshape2)
+
+#data
+setwd("~/Desktop/progetti con r/progetto armi da fuoco")
+gund = read.csv("gun_deaths_us_1999_2019.csv")
+etn = read.csv("US_county_census_est_race_eth_2010_2019 (1).csv")
+confini = st_read("cb_2018_us_county_500k.shp")
+usregion = read.csv("states 2.csv")
+usregion1= usregion %>%
+  select(State.Code,Region)
+
+#creiamo il database
+
+df= merge(etn, gund, by.x=c("FIPS", "year"), by.y= c("County.Code","Year"))
+
+
+#seleziono solo le colonne che mi interesssano
+df1= df %>%
+  select(FIPS, year, state_abbrev, state, county, pop, 
+         white_pop, black_pop, asian_pop, indian_pop, hisp_pop, pacific_pop, Deaths,)
+
+#dataframe definitivo con regioni
+
+d = merge(df1, usregion1, by.x= "state_abbrev", by.y= "State.Code")
+
+#aggiugiamo tasso di mortalità 
+
+drate = (d$Deaths/d$pop)*100
+d$drate = drate
+
+#creiamo percentuali
+
+rate_white = (d$white_pop/d$pop)*100
+rate_black = (d$black_pop/d$pop)*100
+rate_asian = (d$asian_pop/d$pop)*100
+rate_indian = (d$indian_pop/d$pop)*100
+rate_isp = (d$hisp_pop/d$pop)*100
+rate_pac = (d$pacific_pop/d$pop)*100
+
+#aggiungiamo al dataframe
+
+d$rate_white = rate_white
+d$rate_black = rate_black
+d$rate_asian = rate_asian
+d$rate_indian = rate_indian
+d$rate_isp = rate_isp
+d$rate_pac = rate_pac
+#correlazioni
+
+corwhite = ggplot(d,aes(x=drate,
+  y=rate_white))+ geom_point(aes(colour= Region),size=0.01) + geom_smooth(method='lm',se= F)+
+  labs(title="Correlazione tra di white pop e drate")+ 
+  labs(y = "white pop", x = "drate")+
+  stat_cor(aes(label=after_stat(r.label)),label.x = 0.09,label.y = 25, size= 3, col="blue")
+
+corblack = ggplot(d,aes(x=drate,
+       y=rate_black))+ geom_point(aes(colour= Region),size=0.01) + geom_smooth(method='lm',se= F)+
+  labs(title="Correlazione tra di black pop e drate")+ 
+  labs(y = "black pop", x = "drate")+
+  stat_cor(aes(label=after_stat(r.label)),label.x = 0.09,label.y = 15, size= 3, col="blue")
+
+corhisp = ggplot(d,aes(x=drate,
+               y=rate_isp))+ geom_point(aes(colour= Region),size=0.01) + geom_smooth(method='lm',se= F)+
+  labs(title="Correlazione tra di hisp pop e drate")+ 
+  labs(y = "hisp pop", x = "drate")+
+  stat_cor(aes(label=after_stat(r.label)),label.x = 0.09,label.y = 25, size= 3, col="blue") 
+
+corasian = ggplot(d,aes(x=drate,
+               y=rate_asian))+ geom_point(aes(colour= Region),size=0.01) + geom_smooth(method='lm',se= F)+
+  labs(title="Correlazione tra di asian pop e drate")+ 
+  labs(y = "asian pop", x = "drate")+
+  stat_cor(aes(label=after_stat(r.label)),label.x = 0.09,label.y = 10, size= 3, col="blue") 
+
+corindian = ggplot(d,aes(x=drate,
+               y=rate_indian))+ geom_point(aes(colour= Region),size=0.01) + geom_smooth(method='lm',se= F)+
+  labs(title="Correlazione tra di indian pop e drate")+ 
+  labs(y = "indian pop", x = "drate")+
+  stat_cor(aes(label=after_stat(r.label)),label.x = 0.09,label.y = 25, size= 3, col="blue") 
+
+corpacific = ggplot(d,aes(x=drate,
+                           y=rate_pac))+ geom_point(aes(colour= Region),size=0.01) + geom_smooth(method='lm',se= F)+
+  labs(title="Correlazione tra di pacific pop e drate")+ 
+  labs(y = "pacific pop", x = "drate")+
+  stat_cor(aes(label=after_stat(r.label)),label.x = 0.09,label.y = 5, size= 3, col="blue")
+
+ggarrange(corwhite, corblack, corhisp, corasian, corindian, corpacific, ncol = 2, nrow = 3)
+
+#inseriamo i poligoni dei confini dentro il dataframe
+
+d1 = merge(d,confini, by.x="FIPS", by.y="GEOID")
+
+cor_white= d1 %>%
+  select(FIPS,year,drate, rate_white) %>%
+  group_by(FIPS)%>%
+  summarise(Var1 = cor(drate, rate_white))
+
+geo_white = merge(cor_white,confini, by.x="FIPS", by.y="GEOID")
+
+cor_black= d1 %>%
+  select(county,year,drate, rate_black, geometry) %>%
+  group_by(county, geometry)%>%
+  summarise(Var1 = cor(drate, rate_black))
+
+geo_white = merge(cor_white,confini, by.x="FIPS", by.y="GEOID")
+
+cor_isp= d1 %>%
+  select(county,year,drate, rate_isp, geometry) %>%
+  group_by(county, geometry)%>%
+  summarise(Var1 = cor(drate, rate_isp))
+
+geo_white = merge(cor_white,confini, by.x="FIPS", by.y="GEOID")
+
+cor_asian= d1 %>%
+  select(county,year,drate, rate_asian, geometry) %>%
+  group_by(county, geometry)%>%
+  summarise(Var1 = cor(drate, rate_asian))
+
+geo_white = merge(cor_white,confini, by.x="FIPS", by.y="GEOID")
+
+cor_indian= d1 %>%
+  select(county,year,drate, rate_indian, geometry) %>%
+  group_by(county, geometry)%>%
+  summarise(Var1 = cor(drate, rate_indian))
+
+geo_white = merge(cor_white,confini, by.x="FIPS", by.y="GEOID")
+
+cor_pacific= d1 %>%
+  select(county,year,drate, rate_pac, geometry) %>%
+  group_by(county, geometry)%>%
+  summarise(Var1 = cor(drate, rate_pac))
+
+geo_white = merge(cor_white,confini, by.x="FIPS", by.y="GEOID")
+
+g1 = ggplot(geo_white,aes(fill=Var1) + geom_sf(aes(geometry = geometry)) +
+  scale_fill_continuous(type ="viridis",na.value="white"))
+
+g1 = ggplot(geo_white,aes(fill=Var1) + geom_sf(aes(geometry = geometry)) +
+                scale_fill_continuous(type ="viridis",na.value="white"))
+            
+g1 = ggplot(geo_white,aes(fill=Var1) + geom_sf(aes(geometry = geometry)) +
+                          scale_fill_continuous(type ="viridis",na.value="white"))
+            
+            
+g1 = ggplot(geo_white,aes(fill=Var1) + geom_sf(aes(geometry = geometry)) +
+                          scale_fill_continuous(type ="viridis",na.value="white"))
