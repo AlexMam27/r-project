@@ -1,0 +1,702 @@
+#initializing
+
+library(knitr)
+library(tidyverse)
+library(scales)
+library(maptools)
+library(spatstat.geom)
+library(sf)
+library(dplyr)
+library(ggplot2)
+library(ggpubr)
+library(gridExtra)
+library(pals)
+library(RColorBrewer)
+library(reshape2)
+library(viridis)
+library(ggthemes)
+library(modeest)
+library(ggrepel)
+library(prettydoc)
+
+setwd("~/Desktop/progetto hotel")
+
+#data
+hotels = read.csv("hotels.csv")
+confini = st_read("world-administrative-boundaries.shp")
+hotels1 = mutate(hotels, stays = stays_in_weekend_nights + stays_in_week_nights)
+
+#vedo quali sono i 5 maggiori segmenti di mercato ed escludo dal database gli altri
+
+#faccio un grafico a barre
+hotels1 %>% 
+  group_by(hotel,market_segment) %>% 
+  count() %>% 
+  ggplot(aes(x = reorder(market_segment, -n),
+             y = n, 
+             fill = market_segment)) + 
+  geom_col() +
+  facet_wrap(~hotel, ncol = 2)+
+  geom_text(aes(label=sprintf("%0.2f", round(n, digits = 0))), 
+            vjust=1.6, color="black", size=1.5)+
+  labs(title="Segmenti di mercato più comuni",
+       x ="Segmenti di mercato", y = "Numero di osservazioni")+
+  theme_few()+
+  theme(plot.title = element_text(face="bold",size=15,colour="red"),
+        axis.title= element_text(face="bold"),
+        legend.title = element_text(size = 10, face = "bold"),
+        axis.text.x=element_blank())+
+  guides(fill=guide_legend(title="Segmento di mercato"))
+  
+
+#escludo le righe con gli altri segmenti market
+df = filter(hotels1, market_segment %in%  c("Online_TA","Offline_TA/TO",
+                                           "Direct","Groups","Corporate"))
+
+#analisi e rappresentazione
+
+
+#1) FIGLI 
+
+#creo il dataframe 
+
+#city hotel
+children1= df %>%
+  filter(hotel=="City_Hotel")%>%
+  group_by(market_segment,children)%>%
+  summarise(n = n()) %>%
+  mutate(freq = n / sum(n))%>% 
+  mutate(labels = scales::percent(freq))
+#Resort_Hotel
+children2= df %>%
+  filter(hotel=="Resort_Hotel")%>%
+  group_by(market_segment,children)%>%
+  summarise(n = n()) %>%
+  mutate(freq = n / sum(n))%>% 
+  mutate(labels = scales::percent(freq))
+
+#OUTPUT (grafici a torta)
+
+#City Hotel
+piechild1= ggplot(children1, aes(x = "", y = freq, fill = children)) +
+  geom_col() +
+  facet_wrap(~market_segment, ncol = 5)+
+  geom_label(aes(label = labels),
+             position = position_stack(vjust = 0.5),
+             show.legend = FALSE)+
+  scale_fill_discrete(labels=c("Presenza di figli", "Assenza di figli"))+
+  coord_polar(theta = "y")+
+  labs(x="",y="City Hotel",
+       title= "Percentuale di soggiorni di famiglie con figli 
+per ogni segmento di mercato") +
+  theme(plot.title = element_text(face="bold",size=15,colour="red"),
+        axis.title= element_text(face="bold"),
+        legend.title = element_blank())
+#Resort_Hotel
+piechild2= ggplot(children2, aes(x = "", y = freq, fill = children)) +
+  geom_col() +
+  facet_wrap(~market_segment, ncol = 5)+
+  geom_label(aes(label = labels),
+             position = position_stack(vjust = 0.5),
+             show.legend = FALSE)+
+  scale_fill_discrete(labels=c("Presenza di figli", "Assenza di figli"))+
+  coord_polar(theta = "y")+
+  labs(x="",y="Resort Hotel")+
+  theme(axis.title= element_text(face="bold"),
+        legend.title = element_blank())
+#Li rappresento entrambi
+ggarrange(piechild1, piechild2, ncol = 1, nrow = 2, align= "h",
+          heights = 2, common.legend = TRUE, legend="bottom")
+
+#2) NUMERO DI NOTTI
+
+#Creo gli intervalli
+nights_breaks= c(0,2,7,14,Inf)
+
+#creo il dataframe 
+#cityhotel
+nights1= df %>%
+  filter(hotel=="City_Hotel")%>%
+  group_by(market_segment,stays)%>%
+  summarise(n = n()) %>%
+  group_by(market_segment, stays1 = cut(stays,breaks=nights_breaks,
+                                        right = F)) %>%
+  tally() %>%
+  mutate(freq = n / sum(n))%>% 
+  mutate(labels = scales::percent(freq))
+
+#resorthotel
+nights2= df %>%
+  filter(hotel=="Resort_Hotel")%>%
+  group_by(market_segment,stays)%>%
+  summarise(n = n()) %>%
+  group_by(market_segment, stays2 = cut(stays,breaks=nights_breaks,
+                                        right = F)) %>%
+  tally() %>%
+  mutate(freq = n / sum(n))%>% 
+  mutate(labels = scales::percent(freq))
+
+nights3= df %>%
+  filter(hotel=="Resort_Hotel")%>%
+  group_by(market_segment,stays)%>%
+  summarise(n = n()) %>%
+  group_by(market_segment, stays2 = cut(stays,breaks=nights_breaks,
+                                        right = F)) %>%
+  tally() %>%
+  mutate(freq = n / sum(n)) %>%
+  mutate(freq1=freq*100)
+
+#OUTPUT (grafici a torta)
+
+#cityhotel
+pienights1= ggplot(nights1, aes(x = "", y = freq, fill = stays1)) +
+  geom_bar(stat="identity")+
+  geom_label(aes(y= freq, label = labels),
+             size = 1.5, position= position_stack(vjust = 0.5),
+             show.legend = FALSE)+
+  coord_polar(theta = "y") +
+  facet_wrap(~market_segment, ncol = 5)+
+  labs(title="Percentuale di notti trascorse in hotel 
+per ogni segmento di mercato",
+       x= "",y ="City Hotel")+
+  theme(plot.title = element_text(face="bold",size=15,colour="red"),
+        axis.title= element_text(face="bold"),
+        legend.title = element_text(size = 10, face = "bold"))+
+  guides(fill=guide_legend(title="Notti trascorse in hotel"))
+
+#resorthotel
+pienights2= ggplot(nights2, aes(x = "", y = freq, fill = stays2)) +
+  geom_bar(stat="identity") +
+  geom_label_repel(aes(y= freq, label = labels),
+                   size = 1.5, position= position_stack(vjust = 0.55),
+                   show.legend = FALSE)+
+  coord_polar(theta = "y")+
+  facet_wrap(~market_segment, ncol = 5)+
+  labs(x= "",y ="Resort Hotel")+
+  theme(axis.title= element_text(face="bold"),
+        legend.title = element_text(size = 10, face = "bold"))+
+  guides(fill=guide_legend(title="Notti trascorse in hotel"))
+
+#li rappresento entrambi
+ggarrange (pienights1, pienights2, ncol = 1, nrow = 2, align= "h",
+           heights = 2, common.legend = TRUE, legend="bottom")
+
+#3) ADR
+#creo il dataframe 
+#cityhotel
+adr1= df %>%
+  filter(hotel=="City_Hotel")%>%
+  group_by(market_segment)%>%
+  summarise_at(vars(average_daily_rate),mean)
+as.factor(adr1$average_daily_rate)
+#resorthotel
+adr2= df %>%
+  filter(hotel=="Resort_Hotel")%>%
+  group_by(market_segment)%>%
+  summarise_at(vars(average_daily_rate),mean)
+
+#OUTPUT 
+
+# Outside bars
+baradr1= ggplot(data=adr1, aes(x=reorder(market_segment, -average_daily_rate), y=average_daily_rate,
+                               fill = factor(average_daily_rate))) +
+  geom_bar(stat="identity")+
+  scale_fill_brewer(palette="Greens")+
+  geom_text(aes(label=sprintf("%0.2f", round(average_daily_rate, digits = 2))), 
+            vjust=1.6, color="white", size=6)+
+  labs(title="ADR medio per ogni segmento di mercato", 
+       subtitle= "ADR = Average daily rate (in dollari)",
+       x= "Segmento di mercato (City Hotel)",y ="ADR medio")+
+  theme_few()+
+  theme(plot.title = element_text(face="bold",size=15,colour="red"),
+        axis.title= element_text(face="bold"))+
+  theme(legend.position="none")
+
+
+baradr2= ggplot(data=adr2, aes(x=reorder(market_segment, -average_daily_rate), y=average_daily_rate,
+                               fill = factor(average_daily_rate))) +
+  geom_bar(stat="identity")+
+  scale_fill_brewer(palette="Greens")+
+  geom_text(aes(label=sprintf("%0.2f", round(average_daily_rate, digits = 2))), 
+            vjust=1.6, color="white", size=6)+
+  labs(x= "Segmento di mercato (Resort Hotel)",y ="ADR medio")+
+  theme_few()+
+  theme(axis.title= element_text(face="bold"))+
+  theme(legend.position="none")
+
+#li rappresento entrambi
+ggarrange (baradr1, baradr2, ncol = 1, nrow = 2)
+
+#4) LEAD TIME
+
+#creo il dataframe 
+#cityhotel
+time1= df %>%
+  filter(hotel=="City_Hotel")%>%
+  group_by(market_segment)%>%
+  summarise_at(vars(lead_time),mean)
+
+#resorthotel
+time2= df %>%
+  filter(hotel=="Resort_Hotel")%>%
+  group_by(market_segment)%>%
+  summarise_at(vars(lead_time),mean)
+
+#OUTPUT 
+# Outside bars
+bartime1= ggplot(data=time1, aes(x=reorder(market_segment, -lead_time), y=lead_time,
+                                 fill = factor(lead_time))) +
+  geom_bar(stat="identity")+
+  scale_fill_brewer(palette="Blues",labels= c("Corporate","Direct",
+                                              "Online_TA","Groups","Offline_TA/TO"))+
+  geom_text(aes(label=sprintf("%0.2f", round(lead_time, digits = 2))), 
+            vjust=1.6, color="white", size=3)+
+  labs(title="Lead Time medio",
+       subtitle= "Lead Time = Intervallo di tempo tra la prenotazione e l'arrivo (in giorni)",
+       x= "Segmento di mercato (City hotel)",y ="Lead Time medio")+
+  theme_few()+
+  theme(plot.title = element_text(face="bold",size=15,colour="red"),
+        axis.title= element_text(face="bold"))+
+  theme(legend.position="none")
+
+bartime2= ggplot(data=time2, aes(x=reorder(market_segment, -lead_time), y=lead_time,
+                                 fill = factor(lead_time))) +
+  geom_bar(stat="identity")+
+  scale_fill_brewer(palette="Blues")+
+  geom_text(aes(label=sprintf("%0.2f", round(lead_time, digits = 2))), 
+            vjust=1.6, color="white", size=3)+
+  labs(x= "Segmento di mercato (Resort Hotel)",y ="Lead Time medio")+
+  theme_few()+
+  theme(axis.title= element_text(face="bold"))+
+  theme(legend.position="none")
+
+#li rappresento entrambi
+ggarrange(bartime1, bartime2, ncol = 1, nrow = 2, align= "h",
+          heights = 2) 
+
+#5) MESE
+#creo il dataframe
+df$month <- format(as.Date(df$arrival_date, format="%Y-%m-%d"),"%m")
+df$month <- as.character(df$month)
+
+months1= df %>%
+    filter(hotel=="City_Hotel")%>%
+    group_by(market_segment,month)%>%
+    summarise(n = n()) %>%
+    mutate(freq = n / sum(n))%>% 
+    mutate(labels = scales::percent(freq))
+
+months2= df %>%
+  filter(hotel=="Resort_Hotel")%>%
+  group_by(market_segment,month)%>%
+  summarise(n = n()) %>%
+  mutate(freq = n / sum(n))%>% 
+  mutate(labels = scales::percent(freq))
+
+#associo il mese alla stagione
+
+season<-c('Inverno','Inverno','Primavera','Primavera','Primavera',
+          'Estate','Estate','Estate','Autunno','Autunno','Autunno','Inverno')
+
+months1$season= rep(season,len=60)
+months2$season= rep(season,len=60)
+
+cols = c("Inverno"= "lightblue","Primavera"="lightgreen",
+         "Estate"="red","Autunno"= "yellow")
+
+#OUTPUT
+
+barmonths1= months1  %>%
+  ggplot(aes(x = month, y = freq, fill = season)) +
+  scale_fill_manual(values = cols)+
+  geom_bar(stat="identity",show.legend = T) +
+  facet_wrap(~market_segment, ncol = 5)+
+  geom_text(aes(label=sprintf("%0.2f", round(freq, digits = 2))), 
+            vjust=-0.5, color="black", size=1, show.legend = F)+
+  labs(title="Distribuzione della frequenza dei soggiorni dei 
+segmenti di mercato nei vari mesi dell'anno",
+       subtitle = "City Hotel",
+       x= "Mese",y ="Frequenza")+
+  theme_few()+
+  theme(plot.title = element_text(face="bold",size=15,colour="red"),
+        plot.subtitle = element_text(face="bold",size=10),
+        axis.title= element_text(face="bold",size=10),
+        legend.title = element_text(size = 10, face = "bold"),
+        axis.text.x = element_text(angle = 90, vjust = 0.5,size=6))+
+  guides(fill=guide_legend(title="Stagione"))
+
+barmonths2= months2  %>%
+  ggplot(aes(x = month, y = freq, fill = season)) +
+  scale_fill_manual(values = cols)+
+  geom_bar(stat="identity",show.legend = T) +
+  facet_wrap(~market_segment, ncol = 5)+
+  geom_text(aes(label=sprintf("%0.2f", round(freq, digits = 2))), 
+            vjust=-0.5, color="black", size=1, show.legend = F)+
+  labs(title="Resort Hotel", x= "Mese",y ="Frequenza") +
+  theme_few()+
+  theme(plot.title = element_text(face="bold",size=10),
+        axis.title= element_text(face="bold"),
+        legend.title = element_text(size = 10, face = "bold"),
+        axis.text.x = element_text(angle = 90, vjust = 0.5,size=6))+
+  guides(fill=guide_legend(title="Stagione"))
+
+
+#li rappresento entrambi
+ggarrange (barmonths1, barmonths2, ncol = 1, nrow = 2, align= "h",
+           heights = 2, common.legend = TRUE, legend="bottom")
+
+#ANALISI GEOGRAFICA
+
+#ripulisco il dataframe dei confini
+
+df = df[!(df$country == "NULL"),]
+confini1 = select(confini, iso3, region, geometry)
+confini1 = confini1[!(is.na(confini1$iso3)), ]
+confini1 = confini1[!duplicated(confini1$iso3),]
+confini2 = df %>%
+  left_join(confini1, by = c("country" = "iso3")) 
+
+geo =  confini2 %>%
+  select(hotel,lead_time,children, stays,country,market_segment,average_daily_rate,
+         month,region,geometry)
+
+#1) FIGLI 
+
+#ripulisco il dataframe dei confini
+df = df[!(df$country == "NULL"),]
+confini1 = select(confini, iso3, region, geometry)
+confini1 = confini1[!(is.na(confini1$iso3)), ]
+confini1 = confini1[!duplicated(confini1$iso3),]
+confini2 = df %>%
+  left_join(confini1, by = c("country" = "iso3")) 
+
+geo =  confini2 %>%
+  select(hotel,lead_time,children, stays,country,market_segment,average_daily_rate,
+         month,region,geometry)
+
+#1) FIGLI 
+
+#City hotel
+#creo il dataframe
+geo_child= geo %>%
+  filter(hotel=="City_Hotel")%>%
+  group_by(country,geometry, children)%>%
+  summarise(n = n()) %>%
+  mutate(freq = n / sum(n))%>% 
+  mutate(labels = scales::percent(freq))%>%
+  filter(children=="children")
+
+conf_iso3= confini  %>%
+  select(iso3,geometry)
+conf_iso3 = conf_iso3[!(is.na(conf_iso3$iso3)), ]
+conf_iso3 = conf_iso3[!duplicated(conf_iso3$iso3),]
+
+confini_child = conf_iso3 %>%
+  left_join(geo_child, by = c("iso3" = "country")) 
+confini_child = confini_child[!duplicated(confini_child$iso3),]
+
+#Resort hotel
+geo_child2= geo %>%
+  filter(hotel=="Resort_Hotel")%>%
+  group_by(country,geometry, children)%>%
+  summarise(n = n()) %>%
+  mutate(freq = n / sum(n))%>% 
+  mutate(labels = scales::percent(freq))%>%
+  filter(children=="children")
+
+confini_child2 = conf_iso3 %>%
+  left_join(geo_child2, by = c("iso3" = "country")) 
+confini_child = confini_child[!duplicated(confini_child$iso3),]
+
+#OUTPUT
+#cityhotel
+geom_child= confini_child %>%
+  ggplot(aes(fill=freq))+
+  geom_sf(aes(geometry = geometry.x))+
+  scale_fill_gradient(low = "yellow",
+                      high = "red", 
+                      labels=c("0%","10%","20%","30%", "40%","50%",
+                               "60%","70%","80%","90%","100%"),
+                      breaks = seq(from = 0, to = 1, by = 0.1),
+                      guide= "colourbar",
+                      na.value = "lightgray")+
+  labs(title="Percentuale di soggiorni di famiglie 
+con figli per ogni Nazione", 
+       x= "City Hotel",y ="") +
+  theme_few()+
+  theme(plot.title = element_text(face="bold",size=15,colour="red"),
+        axis.title= element_text(face="bold"),
+        legend.title = element_text(size = 13, face = "bold"))+
+  guides(fill=guide_legend(title="Percentuale"))
+
+#resorthotel
+geom_child2= confini_child2 %>%
+  ggplot(aes(fill=freq))+
+  geom_sf(aes(geometry = geometry.x))+
+  scale_fill_gradient(low = "yellow",
+                      high = "red", 
+                      labels=c("0%","10%","20%","30%", "40%","50%",
+                               "60%","70%","80%","90%","100%"),
+                      breaks = seq(from = 0, to = 1, by = 0.1),
+                      guide= "colourbar",
+                      na.value = "lightgray")+
+  labs(x= "Resort Hotel",y ="") +
+  theme_few()+
+  theme(plot.title = element_text(face="bold",size=10),
+        axis.title= element_text(face="bold"))+
+  guides(fill=guide_legend(title="Percentuale"))
+
+#li rappresento entrambi
+ggarrange(geom_child, geom_child2, ncol = 1, nrow = 2,  align= "h",
+          heights = 2, common.legend = TRUE, legend="right")
+
+#2) NUMERO DI NOTTI
+
+#creo il dataframe 
+#city hotel
+geo_stays= geo %>%
+  filter(hotel=="City_Hotel")%>%
+  group_by(country,geometry)%>%
+  summarise_at(vars(stays),mean)
+geo_stays= geo_stays[geo_stays$stays!=max(geo_stays$stays),]
+
+confini_stays = conf_iso3 %>%
+  left_join(geo_stays, by = c("iso3" = "country")) 
+confini_stays = confini_stays[!duplicated(confini_stays$iso3),]
+
+#Resort hotel
+geo_stays2= geo %>%
+  filter(hotel=="Resort_Hotel")%>%
+  group_by(country,geometry)%>%
+  summarise_at(vars(stays),mean)
+
+confini_stays2 = conf_iso3 %>%
+  left_join(geo_stays2, by = c("iso3" = "country")) 
+confini_stays2 = confini_stays2[!duplicated(confini_stays2$iso3),]
+
+#OUTPUT
+#cityhotel
+geom_stay= confini_stays %>%
+  ggplot(aes(fill=stays))+
+  geom_sf(aes(geometry = geometry.x))+
+  scale_fill_viridis(option="A",direction=-1,
+                     labels=c("0","1","2","3","4","5","6","7","8","9"),
+                     breaks = seq(from = 0, to = 9, by = 1),
+                     guide= "colourbar",
+                     na.value = "lightgray")+
+  labs(title="Media delle notti trascorse in hotel per ogni Nazione", 
+       x= "City Hotel",y ="") +
+  theme_few()+
+  theme(plot.title = element_text(face="bold",size=15,colour="red"),
+        axis.title= element_text(face="bold"),
+        legend.title = element_text(size = 10, face = "bold"))+
+  guides(fill=guide_legend(title="Notti medie"))
+
+#resorthotel
+geom_stay2= confini_stays2 %>%
+  ggplot(aes(fill=stays))+
+  geom_sf(aes(geometry = geometry.x))+
+  scale_fill_viridis(option="A",direction=-1,
+                     labels=c("0","1","2","3","4","5","6","7","8","9"),
+                     breaks = seq(from = 0, to = 9, by = 1),
+                     guide= "colourbar",
+                     na.value = "lightgray")+
+  labs(x= "Resort Hotel",y ="") +
+  theme_few()+
+  theme(plot.title = element_text(face="bold",size=10),
+        axis.title= element_text(face="bold"))+
+  guides(fill=guide_legend(title="Notti medie"))  
+
+#li rappresento entrambi
+ggarrange(geom_stay, geom_stay2, ncol = 1, nrow = 2,  align= "h",
+          heights = 2, common.legend = TRUE, legend="right")
+
+#3) ADR
+
+#city hotel
+#creo il dataframe 
+geo_adr= geo %>%
+  filter(hotel=="City_Hotel")%>%
+  group_by(country,geometry)%>%
+  summarise_at(vars(average_daily_rate),mean)
+confini_adr = conf_iso3 %>%
+  left_join(geo_adr, by = c("iso3" = "country")) 
+confini_adr = confini_adr[!duplicated(confini_adr$iso3),]
+
+#OUTPUT
+#cityhotel
+geom_adr= confini_adr %>%
+  ggplot(aes(fill=average_daily_rate))+
+  geom_sf(aes(geometry = geometry.x))+
+  scale_fill_gradientn(colors=brewer.pal(7,"YlGn"), 
+                       labels=c("50","100","150","200","250","300","350"),
+                       breaks = seq(from = 50, to = 350, by = 50),
+                       guide= "colourbar",
+                       na.value = "lightgray")+
+  labs(title="ADR medio per ogni Nazione",
+       subtitle= "ADR= Average daily rate (in dollari)",
+       x= "City Hotel",y ="") +
+  theme_few()+
+  theme(plot.title = element_text(face="bold",size=15,colour="red"),
+        axis.title= element_text(face="bold"),
+        legend.title = element_text(size = 10, face = "bold"))+
+  guides(fill=guide_legend(title="ADR medio"))
+
+#resorthotel
+#creo il dataframe 
+geo_adr2= geo %>%
+  filter(hotel=="Resort_Hotel")%>%
+  group_by(country,geometry)%>%
+  summarise_at(vars(average_daily_rate),mean)
+confini_adr2 = conf_iso3 %>%
+  left_join(geo_adr2, by = c("iso3" = "country")) 
+confini_adr2 = confini_adr2[!duplicated(confini_adr2$iso3),]
+
+#OUTPUT
+geom_adr2= confini_adr2 %>%
+  ggplot(aes(fill=average_daily_rate))+
+  geom_sf(aes(geometry = geometry.x))+
+  scale_fill_gradientn(colors=brewer.pal(7,"YlGn"), 
+                       labels=c("50","100","150","200","250","300","350"),
+                       breaks = seq(from = 50, to = 350, by = 50),
+                       guide= "colourbar",
+                       na.value = "lightgray")+
+  labs(x= "Resort Hotel",y ="")+
+  theme_few()+
+  theme(axis.title= element_text(face="bold"),
+        legend.title = element_text(size = 10, face = "bold")) 
+
+#li rappresento entrambi
+ggarrange(geom_adr, geom_adr2, ncol = 1, nrow = 2,  align= "h",
+          heights = 2, common.legend = TRUE, legend="right")
+
+#4) LEAD TIME
+
+#city hotel
+#creo il dataframe
+geo_time= geo %>%
+  filter(hotel=="City_Hotel")%>%
+  group_by(country,geometry)%>%
+  summarise_at(vars(lead_time),mean)
+
+time_1 = geo_time$lead_time 
+outliers_time = boxplot.stats(time_1)$out
+geo_time[geo_time$lead_time  %in% outliers_time, "lead_time"] = NA
+geo_time = geo_time[!(geo_time$lead_time == "0" | is.na(geo_time$lead_time)), ]
+
+confini_time = conf_iso3 %>%
+  left_join(geo_time, by = c("iso3" = "country")) 
+confini_time = confini_time[!duplicated(confini_time$iso3),]
+
+
+#OUTPUT
+geom_time= confini_time %>%
+  ggplot(aes(fill = lead_time))+
+  geom_sf(aes(geometry = geometry.x))+
+  scale_fill_gradientn(colors=brewer.blues(9),
+             labels=c("0","25","50","75","100","125","150","175","200","225"),
+             breaks = seq(from = 0, to = 225, by = 25),
+             guide= "colourbar",
+             na.value = "lightgray")+
+  labs(title="Lead medio per ogni Nazione",
+       subtitle= "Lead Time= intervallo di tempo tra la prenotazione e l'arrivo",
+       x= "City Hotel",y ="") +
+  theme_few()+
+  theme(plot.title = element_text(face="bold",size=20,colour="red"),
+        axis.title= element_text(face="bold"),
+        legend.title = element_text(size = 10, face = "bold"))+
+  guides(fill=guide_legend(title="Lead time medio"))
+
+#resorthotel
+#creoildataframe
+geo_time2= geo %>%
+  filter(hotel=="Resort_Hotel")%>%
+  group_by(country,geometry)%>%
+  summarise_at(vars(lead_time),mean)
+confini_time2 = conf_iso3 %>%
+  left_join(geo_time2, by = c("iso3" = "country")) 
+confini_time2 = confini_time2[!duplicated(confini_time2$iso3),]
+
+#OUTPUT
+geom_time2= confini_time2 %>%
+  ggplot(aes(fill = lead_time))+
+  geom_sf(aes(geometry = geometry.x))+
+  scale_fill_gradientn(colors=brewer.blues(9),
+               labels=c("0","25","50","75","100","125","150","175","200","225"),
+               breaks = seq(from = 0, to = 225, by = 25),
+               guide= "colourbar",
+               na.value = "lightgray")+
+  labs(x= "Resort Hotel",y ="")+
+  theme_few()+
+  theme(axis.title= element_text(face="bold"),
+        legend.title = element_text(size = 10, face = "bold")) 
+
+#li rappresento entrambi
+ggarrange(geom_time, geom_time2, ncol = 1, nrow = 2,  align= "h",
+          heights = 2, common.legend = TRUE, legend="right")
+
+#5) MONTH
+
+#city hotel
+#creo il dataframe 
+geo_month= geo %>%
+  filter(hotel=="City_Hotel")%>%
+  group_by(country,geometry)%>%
+  summarise(mode = mlv(month, method=mfv))
+geo_month$mode= as.numeric(geo_month$mode)
+geo_month= geo_month %>%
+  mutate(season = case_when(mode >= 1 & mode <= 2 ~ "Winter",
+                          mode >= 3 & mode <= 5 ~ "Spring",
+                          mode >= 6 & mode <= 8 ~ "Summer",
+                          mode >= 9 & mode <= 11 ~ "Autumn",
+                          mode == 12 ~ "Winter"))
+confini_month = conf_iso3 %>%
+  left_join(geo_month, by = c("iso3" = "country")) 
+confini_month = confini_month[!duplicated(confini_month$iso3),]
+
+#OUTPUT
+geom_month= confini_month %>%
+  ggplot(aes(fill = season))+
+  geom_sf(aes(geometry = geometry.x))+
+  scale_fill_manual(values = c("Inverno"= "lightblue","Primavera"="lightgreen",
+                               "Estate"="red","Autunno"= "yellow"),
+                    na.value = "lightgray")+
+  labs(title= "Moda della stagione dell'anno 
+più frequente per ogni nazione",
+       x= "City Hotel",y ="") +
+  theme_few()+
+  theme(plot.title = element_text(face="bold",size=15,colour="red"),
+        axis.title= element_text(face="bold"),
+        legend.title = element_text(size = 10, face = "bold"))+
+  guides(fill=guide_legend(title="Stagione"))
+#resorthotel
+geo_month2= geo %>%
+  filter(hotel=="Resort_Hotel")%>%
+  group_by(country,geometry)%>%
+  summarise(mode = mlv(month, method=mfv))
+geo_month2$mode= as.numeric(geo_month2$mode)
+geo_month2= geo_month2 %>%
+  mutate(season = case_when(mode >= 1 & mode <= 2 ~ "Winter",
+                            mode >= 3 & mode <= 5 ~ "Spring",
+                            mode >= 6 & mode <= 8 ~ "Summer",
+                            mode >= 9 & mode <= 11 ~ "Autumn",
+                            mode == 12 ~ "Winter"))
+confini_month2 = conf_iso3 %>%
+  left_join(geo_month2, by = c("iso3" = "country")) 
+confini_month2 = confini_month2[!duplicated(confini_month2$iso3),]
+
+#OUTPUT
+geom_month2= confini_month2 %>%
+  ggplot(aes(fill = season))+
+  geom_sf(aes(geometry = geometry.x))+
+  scale_fill_manual(values = c("Inverno"= "lightblue","Primavera"="lightgreen",
+                               "Estate"="red","Autunno"= "yellow"),
+                    na.value = "lightgray")+
+  labs(x= "Resort Hotel",y ="") +
+  theme_few()+
+  theme(legend.title = element_text(size = 10, face = "bold"),
+        axis.title= element_text(face="bold"))
+
+#li rappresento entrambi
+ggarrange(geom_month, geom_month2, ncol = 1, nrow = 2,  align= "h",
+          heights = 2, common.legend = TRUE, legend="bottom")
