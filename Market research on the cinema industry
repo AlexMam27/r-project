@@ -1,3 +1,4 @@
+#initializing
 library(tidyverse)
 library(scales)
 library(maptools)
@@ -311,52 +312,57 @@ g0= ggplot(gisvot_eu,aes(fill=vote_average)) + geom_sf() +
   coord_sf(xlim = c(-30,50))+
   labs(title="Generale")
 #drama
-media_vot_eu= europa %>%
+media_vot_eu_drama= europa %>%
   filter(generi %in% c("Drama"))%>%
   select(paesi, vote_average) %>%
   group_by(paesi)%>%
   summarise_at(vars(vote_average),mean)
-g1= ggplot(gisvot_eu,aes(fill=vote_average)) + geom_sf() +
+gisvot_eu_drama= left_join(conf_eu, media_vot_eu_drama, by= c("iso_3166_1_"="paesi"))
+g1= ggplot(gisvot_eu_drama,aes(fill=vote_average)) + geom_sf() +
   scale_fill_continuous(type ="viridis",na.value="white")+
   coord_sf(xlim = c(-30,50))+
   labs(title="Drama")
 #adventure
-media_vot_eu= europa %>%
+media_vot_eu_adventure= europa %>%
   filter(generi %in% c("Adventure"))%>%
   select(paesi, vote_average) %>%
   group_by(paesi)%>%
   summarise_at(vars(vote_average),mean)
-g2=ggplot(gisvot_eu,aes(fill=vote_average)) + geom_sf() +
+gisvot_eu_adventure= left_join(conf_eu, media_vot_eu_adventure, by= c("iso_3166_1_"="paesi"))
+g2=ggplot(gisvot_eu_adventure,aes(fill=vote_average)) + geom_sf() +
   scale_fill_continuous(type ="viridis",na.value="white")+
   coord_sf(xlim = c(-30,50))+
   labs(title="Adventure")
 #action
-media_vot_eu= europa %>%
+media_vot_eu_action= europa %>%
   filter(generi %in% c("Action"))%>%
   select(paesi, vote_average) %>%
   group_by(paesi)%>%
   summarise_at(vars(vote_average),mean)
-g3= ggplot(gisvot_eu,aes(fill=vote_average)) + geom_sf() +
+gisvot_eu_action= left_join(conf_eu, media_vot_eu_action, by= c("iso_3166_1_"="paesi"))
+g3= ggplot(gisvot_eu_action,aes(fill=vote_average)) + geom_sf() +
   scale_fill_continuous(type ="viridis",na.value="white")+
   coord_sf(xlim = c(-30,50))+
   labs(title="Action")
 #comedy
-media_vot_eu= europa %>%
+media_vot_eu_comedy= europa %>%
   filter(generi %in% c("Comedy"))%>%
   select(paesi, vote_average) %>%
   group_by(paesi)%>%
   summarise_at(vars(vote_average),mean)
-g4 = ggplot(gisvot_eu,aes(fill=vote_average)) + geom_sf() +
+gisvot_eu_comedy= left_join(conf_eu, media_vot_eu_comedy, by= c("iso_3166_1_"="paesi"))
+g4 = ggplot(gisvot_eu_comedy,aes(fill=vote_average)) + geom_sf() +
   scale_fill_continuous(type ="viridis",na.value="white")+
   coord_sf(xlim = c(-30,50))+
   labs(title="Comedy")
 #thriller
-media_vot_eu= europa %>%
+media_vot_eu_thriller= europa %>%
   filter(generi %in% c("Thriller"))%>%
   select(paesi, vote_average) %>%
   group_by(paesi)%>%
   summarise_at(vars(vote_average),mean)
-g5 = ggplot(gisvot_eu,aes(fill=vote_average)) + geom_sf() +
+gisvot_eu_thriller= left_join(conf_eu, media_vot_eu_thriller, by= c("iso_3166_1_"="paesi"))
+g5 = ggplot(gisvot_eu_thriller,aes(fill=vote_average)) + geom_sf() +
   scale_fill_continuous(type ="viridis",na.value="white")+
   coord_sf(xlim = c(-30,50))+
   labs(title="Thriller")
@@ -471,3 +477,4 @@ j4<-ggplot(data=sommario_generi, aes(x=generi_com, y=cor_run_eu,
 j5 = j4 + coord_flip()+ ylim(-1, 1)
 
 ggarrange (j1, j3, j5, ncol = 1, nrow = 3)
+
